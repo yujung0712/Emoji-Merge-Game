@@ -5,7 +5,7 @@ import GameCanvas from "./components/GameCanvas";
 function App() {
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>MergeChase</h1>
+     
 
       <GameCanvas />
     </div>

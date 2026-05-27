@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Matter from "matter-js";
+import customCursor from "../assets/my-cursor.png";
 
 const BALL_TYPES = [
   { level: 1, radius: 22, color: "#ffe94d", emoji: "😐", name: "무표정", score: 10 },
@@ -74,6 +75,54 @@ function BubbleWord({ text, colors, size = 62 }) {
   );
 }
 
+
+function EmojiBackground() {
+  const emojis = ["😀","😂","😍","😎","🤯","😡","😱","😊","😴","😤","🤩"];
+
+  const itemsRef = useRef(
+  Array.from({ length: 40 }).map(() => ({
+    emoji: emojis[Math.floor(Math.random() * emojis.length)],
+    left: Math.random() * 100,
+    size: 20 + Math.random() * 40,
+    duration: 10 + Math.random() * 20,
+    delay: Math.random() * 10,
+
+    // 👇 이게 핵심
+    startY: Math.random() * 100, // 0~100vh 사이 아무 위치
+  }))
+);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        overflow: "hidden",
+        zIndex: 0,
+        pointerEvents: "none",
+      }}
+    >
+      {itemsRef.current.map((item, i) => (
+        <span
+          key={i}
+          style={{
+            position: "absolute",
+            left: `${item.left}%`,
+            top: "100%",
+            fontSize: `${item.size}px`,
+            animation: `floatUp ${item.duration}s linear infinite`,
+            animationDelay: `${item.delay}s`,
+            opacity: 0.25,
+          }}
+        >
+          {item.emoji}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+
 function BubbleTitle({ small = false }) {
   const size = small ? 38 : 62;
 
@@ -126,7 +175,7 @@ function createGame({
 }) {
   const { Engine, Render, Runner, World, Bodies, Body, Events } = Matter;
   const engine = Engine.create();
-  engine.world.gravity.y = 1.35;
+  engine.world.gravity.y = 1.15;
 
   const render = Render.create({
     element: scene,
@@ -215,12 +264,20 @@ function createGame({
         const radius = body.circleRadius;
 
         context.save();
+
+        context.translate(x, y);
+        context.rotate(body.angle);
+
         context.shadowBlur = 0;
         context.globalAlpha = 1;
+
         context.font = `${Math.floor(radius * 1.65)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+
         context.textAlign = "center";
         context.textBaseline = "middle";
-        context.fillText(type.emoji, x, y + radius * 0.04);
+
+        context.fillText(type.emoji, 0, radius * 0.04);
+
         context.restore();
       }
     });
@@ -247,18 +304,27 @@ function createGame({
   const runner = Runner.create();
   Runner.run(runner, engine);
 
-  const ground = Bodies.rectangle(GAME_WIDTH / 2, GAME_HEIGHT - 10, GAME_WIDTH, 20, {
-    isStatic: true,
-    render: { fillStyle: "#1b1b1b" },
-  });
+  const ground = Bodies.rectangle(
+    GAME_WIDTH / 2,
+    GAME_HEIGHT - 10,
+    GAME_WIDTH,
+    20,
+    {
+      isStatic: true,
+      friction: 1.2,
+      render: { fillStyle: "#1b1b1b" },
+    }
+);
 
   const leftWall = Bodies.rectangle(0, GAME_HEIGHT / 2, 20, GAME_HEIGHT, {
     isStatic: true,
+    friction: 1,
     render: { fillStyle: "#1b1b1b" },
   });
 
   const rightWall = Bodies.rectangle(GAME_WIDTH, GAME_HEIGHT / 2, 20, GAME_HEIGHT, {
     isStatic: true,
+    friction: 1,
     render: { fillStyle: "#1b1b1b" },
   });
 
@@ -268,8 +334,12 @@ function createGame({
     const type = BALL_TYPES[level - 1];
 
     const ball = Bodies.circle(x, y, type.radius, {
-      restitution: 0.2,
-      friction: 0.1,
+      restitution: 0.05,
+      friction: 0.85,
+      frictionStatic: 1.2,
+      frictionAir: 0.004,
+      density: 0.003,
+      slop: 0.01,
       render: { visible: false },
     });
 
@@ -368,11 +438,10 @@ function createGame({
 
   if (isAI) {
     const diffSettings = {
-      Easy: { start: 2500, accel: 30, min: 1000 },
-      Normal: { start: 1800, accel: 50, min: 700 },
-      Hard: { start: 1000, accel: 100, min: 400 },
+      Easy: { start: 3200, accel: 15, min: 1700 },
+      Normal: { start: 2600, accel: 25, min: 1200 },
+      Hard: { start: 1600, accel: 55, min: 700 },
     };
-
     const setting = diffSettings[difficulty] || diffSettings.Normal;
     let aiIntervalTime = setting.start;
     let aiTimer = null;
@@ -454,6 +523,35 @@ function createGame({
 }
 
 function GameCanvas() {
+  const clickSoundRef = useRef(new Audio("/click.mp3"));
+
+  const gameButtonStyle = (active = false) => ({
+  padding: "14px 36px",
+  fontSize: "18px",
+  fontWeight: "900",
+  borderRadius: "999px",
+
+  border: "3px solid #1b1b1b",
+  cursor: `url(${customCursor}) 0 0, auto`,
+
+  background: active
+    ? "linear-gradient(180deg, #1b1b1b 0%, #2b2b2b 100%)"
+    : "rgba(255,255,255,0.7)",
+
+  color: active ? "#ffe94d" : "#1b1b1b",
+
+  boxShadow: active
+    ? "0 10px 0 rgba(0,0,0,0.35)"
+    : "0 6px 0 rgba(0,0,0,0.18)",
+
+  transform: "translateY(0px)",
+  transition: "all 0.15s ease",
+});
+
+const buttonHover = {
+  transform: "translateY(-2px)",
+};
+
   const [gameState, setGameState] = useState("MENU");
   const [difficulty, setDifficulty] = useState("Normal");
   const [gameOverReason, setGameOverReason] = useState("");
@@ -482,6 +580,7 @@ function GameCanvas() {
   const aiCatchPercent = Math.max(0, Math.min(100, Math.round(((SAFE_GAP - scoreGap) / SAFE_GAP) * 100)));
 
   const isDanger = gameState === "PLAYING" && score >= 1000 && scoreGap >= 0 && scoreGap <= 300;
+  const nextBall = BALL_TYPES[nextLevel - 1];
 
   useEffect(() => {
     nextLevelRef.current = nextLevel;
@@ -582,8 +681,12 @@ function GameCanvas() {
         position: "relative",
         paddingTop: "18px",
         boxSizing: "border-box",
+        cursor: customCursor ? `url(${customCursor}) 14 4, auto` : "auto",
       }}
     >
+
+      <EmojiBackground/>
+
       {isDanger && (
         <div
           style={{
@@ -621,6 +724,21 @@ function GameCanvas() {
           80% { transform: translate(-1px, 2px) rotate(-1deg); }
           100% { transform: translate(1px, -2px) rotate(0deg); }
         }
+
+        @keyframes floatUp {
+          0% {
+            transform: translateY(0);
+          }
+          100% {
+            transform: translateY(-120vh);
+          }
+        } 
+
+        button:hover {
+          transform: translateY(-3px);
+          filter: brightness(1.05);
+  }
+
       `}</style>
 
       {(gameState === "MENU" || gameState === "GAMEOVER") && (
@@ -639,22 +757,47 @@ function GameCanvas() {
           <BubbleTitle />
 
           <div
-            style={{
-              marginBottom: "32px",
-              padding: "20px 54px",
-              border: "3px solid #1b1b1b",
-              borderRadius: "32px",
-              background: "rgba(255,255,255,0.62)",
-              backdropFilter: "blur(12px)",
-              boxShadow: "0 10px 0 rgba(0,0,0,0.18)",
-            }}
-          >
-            <p style={{ fontSize: "14px", color: "#1b1b1b", margin: "0 0 5px 0", fontWeight: "900" }}>
-              BEST SCORE
-            </p>
-            <p style={{ fontSize: "50px", color: "#d84315", fontWeight: "900", margin: 0 }}>
-              {bestScore.toLocaleString()}
-            </p>
+  style={{
+    marginBottom: "34px",
+    padding: "18px 60px",
+
+    border: "4px solid #1b1b1b",
+    borderRadius: "26px",
+
+    background:
+      "linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,245,160,0.75) 100%)",
+
+    boxShadow:
+      "0 12px 0 rgba(0,0,0,0.25), inset 0 2px 0 rgba(255,255,255,0.8)",
+
+    position: "relative",
+    overflow: "hidden",
+  }}
+>
+            <p
+  style={{
+    fontSize: "14px",
+    color: "#1b1b1b",
+    margin: "0 0 6px 0",
+    fontWeight: "1000",
+    letterSpacing: "3px",
+  }}
+>
+  🏆 BEST SCORE
+</p>
+            <p
+  style={{
+    fontSize: "56px",
+    color: "#d60000",
+    fontWeight: "1000",
+    margin: 0,
+
+    textShadow: "3px 3px 0 #1b1b1b, 0 0 15px rgba(255,0,0,0.3)",
+    letterSpacing: "1px",
+  }}
+>
+  {bestScore.toLocaleString()}
+</p>
           </div>
 
           {gameState === "GAMEOVER" && (
@@ -674,42 +817,51 @@ function GameCanvas() {
 
           <div style={{ display: "flex", gap: "15px", marginBottom: "34px" }}>
             {["Easy", "Normal", "Hard"].map((lvl) => (
-              <button
-                key={lvl}
-                onClick={() => setDifficulty(lvl)}
-                style={{
-                  padding: "12px 32px",
-                  fontSize: "17px",
-                  background: difficulty === lvl ? "#1b1b1b" : "rgba(255,255,255,0.58)",
-                  color: difficulty === lvl ? "#ffe94d" : "#1b1b1b",
-                  border: "2px solid #1b1b1b",
-                  borderRadius: "999px",
-                  cursor: "pointer",
-                  transition: "0.25s",
-                  fontWeight: "900",
-                }}
-              >
-                {lvl}
-              </button>
-            ))}
+  <button
+    key={lvl}
+    onClick={() => {
+    clickSoundRef.current.play();
+    setDifficulty(lvl);
+  }}
+    style={gameButtonStyle(difficulty === lvl)}
+    onMouseDown={(e) => (e.currentTarget.style.transform = "translateY(3px)")}
+    onMouseUp={(e) => (e.currentTarget.style.transform = "translateY(0px)")}
+  >
+    {lvl.toUpperCase()}
+  </button>
+))}
           </div>
 
           <button
-            onClick={startGame}
-            style={{
-              padding: "18px 86px",
-              fontSize: "23px",
-              background: "#1b1b1b",
-              color: "#ffe94d",
-              border: "none",
-              borderRadius: "999px",
-              cursor: "pointer",
-              fontWeight: "900",
-              boxShadow: "0 10px 0 rgba(0,0,0,0.25)",
-            }}
-          >
-            {gameState === "GAMEOVER" ? "RETRY" : "START"}
-          </button>
+  onClick={() => {
+    clickSoundRef.current.play();
+    startGame();
+  }}
+  style={{
+    padding: "20px 90px",
+    fontSize: "26px",
+    fontWeight: "1000",
+    borderRadius: "999px",
+    border: "4px solid #1b1b1b",
+
+    background:
+      gameState === "GAMEOVER"
+        ? "linear-gradient(135deg, #ff4d4d, #ff9800)"
+        : "linear-gradient(135deg, #1b1b1b, #3a3a3a)",
+
+    color: "#ffe94d",
+
+    cursor: `url(${customCursor}) 0 0, auto`,
+    boxShadow: "0 12px 0 rgba(0,0,0,0.3)",
+
+    letterSpacing: "1px",
+    textTransform: "uppercase",
+  }}
+  onMouseDown={(e) => (e.currentTarget.style.transform = "translateY(6px)")}
+  onMouseUp={(e) => (e.currentTarget.style.transform = "translateY(0px)")}
+>
+  {gameState === "GAMEOVER" ? "RETRY 🔁" : "START ▶"}
+</button>
         </div>
       )}
 
@@ -937,7 +1089,7 @@ function GameCanvas() {
                   borderRadius: "26px",
                   overflow: "hidden",
                   background: "#fff7a8",
-                  cursor: "none",
+                  cursor: `url(${customCursor}) 0 0, auto`,
                   boxShadow: "0 10px 0 rgba(0,0,0,0.25)",
                 }}
               >
@@ -958,6 +1110,49 @@ function GameCanvas() {
 
             <div style={{ width: "200px" }}>
               <div
+  style={{
+    marginBottom: "18px",
+    padding: "16px",
+    background: "rgba(255,255,255,0.62)",
+    borderRadius: "24px",
+    border: "3px solid #1b1b1b",
+    boxShadow: "0 7px 0 rgba(0,0,0,0.2)",
+    textAlign: "center",
+  }}
+>
+  <div
+    style={{
+      fontSize: "12px",
+      fontWeight: "900",
+      marginBottom: "10px",
+      color: "#1b1b1b",
+      letterSpacing: "0.5px",
+    }}
+  >
+    NEXT EMOJI
+  </div>
+
+  <div
+    style={{
+      fontSize: "58px",
+      lineHeight: 1,
+      marginBottom: "8px",
+    }}
+  >
+    {nextBall.emoji}
+  </div>
+
+  <div
+    style={{
+      fontSize: "13px",
+      fontWeight: "900",
+      color: "#1b1b1b",
+    }}
+  >
+    Lv.{nextBall.level} · {nextBall.name}
+  </div>
+</div>
+              <div
                 style={{
                   padding: "17px",
                   background: "rgba(255,255,255,0.62)",
@@ -975,7 +1170,7 @@ function GameCanvas() {
                     fontWeight: "900",
                   }}
                 >
-                  EMOTION LEVEL
+                  EMO LEVEL
                 </h3>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "6px" }}>
@@ -1011,22 +1206,29 @@ function GameCanvas() {
 
               <div style={{ marginTop: "20px", textAlign: "right", padding: "6px" }}>
                 <button
-                  onClick={() => setGameState("MENU")}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    background: "#1b1b1b",
-                    color: "#ffe94d",
-                    border: "none",
-                    borderRadius: "14px",
-                    cursor: "pointer",
-                    fontWeight: "900",
-                    transition: "0.3s",
-                    boxShadow: "0 6px 0 rgba(0,0,0,0.22)",
-                  }}
-                >
-                  QUIT
-                </button>
+  onClick={() => {
+    clickSoundRef.current.play();
+    setGameState("MENU");
+  }}
+  style={{
+    width: "100%",
+    padding: "14px",
+    fontSize: "16px",
+    fontWeight: "1000",
+    borderRadius: "16px",
+
+    background: "linear-gradient(180deg, #ff4d4d 0%, #d60000 100%)",
+    color: "#fff",
+
+    border: "3px solid #1b1b1b",
+    cursor: `url(${customCursor}) 0 0, auto`,
+
+    boxShadow: "0 8px 0 rgba(0,0,0,0.25)",
+    letterSpacing: "1px",
+  }}
+>
+  EXIT GAME
+</button>
               </div>
             </div>
           </div>
