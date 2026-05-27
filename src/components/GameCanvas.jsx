@@ -554,6 +554,9 @@ const buttonHover = {
 
   const [gameState, setGameState] = useState("MENU");
   const [difficulty, setDifficulty] = useState("Normal");
+
+  const [scale, setScale] = useState(1);
+
   const [gameOverReason, setGameOverReason] = useState("");
   const [bestScore, setBestScore] = useState(() =>
     parseInt(localStorage.getItem("mergeChase_bestScore") || "0", 10)
@@ -602,6 +605,23 @@ const buttonHover = {
   useEffect(() => {
     nextLevelRef.current = nextLevel;
   }, [nextLevel]);
+
+  useEffect(() => {
+  const updateScale = () => {
+    const newScale = Math.min(
+      window.innerWidth / 1400,
+      window.innerHeight / 900
+    );
+
+    setScale(newScale);
+  };
+
+  updateScale(); // 처음 1번 실행
+
+  window.addEventListener("resize", updateScale);
+
+  return () => window.removeEventListener("resize", updateScale);
+}, []);
 
   useEffect(() => {
     if (gameState === "PLAYING" && score >= 1000 && aiScore >= score) {
@@ -722,6 +742,7 @@ const buttonHover = {
       style={{
         width: "100vw",
         minHeight: "100vh",
+     
         background:
           "radial-gradient(circle at 20% 10%, rgba(255,255,255,0.65) 0%, transparent 22%), linear-gradient(180deg, #fff36a 0%, #ffd83d 55%, #ffc400 100%)",
         color: "#1b1b1b",
@@ -733,6 +754,15 @@ const buttonHover = {
         cursor: customCursor ? `url(${customCursor}) 14 4, auto` : "auto",
       }}
     >
+
+          <div
+      style={{
+        transform: `scale(${scale})`,
+        transformOrigin: "top center",
+        width: "1400px",
+        margin: "0 auto",
+      }}
+    ></div>
 
       <EmojiBackground/>
 
