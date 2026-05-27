@@ -568,6 +568,23 @@ const buttonHover = {
   const [isAiPaused, setIsAiPaused] = useState(false);
   const [shake, setShake] = useState(false);
 
+
+  function getGaugeColor(gap) {
+  const ratio = Math.min(Math.abs(gap) / SAFE_GAP, 1);
+
+  if (gap >= 0) {
+    if (ratio < 0.3) return "#ffe94d";
+    if (ratio < 0.6) return "#ffb300";
+    if (ratio < 0.85) return "#ff6d00";
+    return "#ff2e2e";
+  } else {
+    if (ratio < 0.3) return "#8be9ff";
+    if (ratio < 0.6) return "#4dc3ff";
+    if (ratio < 0.85) return "#1e88e5";
+    return "#0d47a1";
+  }
+}
+
   const aiSceneRef = useRef(null);
   const playerSceneRef = useRef(null);
   const aiGameInstance = useRef(null);
@@ -1208,6 +1225,13 @@ const buttonHover = {
                 <button
   onClick={() => {
     clickSoundRef.current.play();
+
+    setBestScore((prev) => {
+      const newBest = Math.max(prev, score);
+      localStorage.setItem("mergeChase_bestScore", newBest.toString());
+      return newBest;
+    });
+
     setGameState("MENU");
   }}
   style={{
