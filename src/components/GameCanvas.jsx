@@ -609,6 +609,14 @@ const buttonHover = {
     }
   }, [aiScore, score, gameState]);
 
+
+  useEffect(() => {
+  if (gameState !== "PLAYING") {
+    aiGameInstance.current?.engine.cleanupAI?.();
+    playerGameInstance.current?.engine.cleanupListeners?.();
+  }
+}, [gameState]);
+
   const handleCombo = (count) => {
     if (count < 2) return;
 
@@ -648,6 +656,30 @@ const buttonHover = {
     setGameOverReason(reason);
     setGameState("GAMEOVER");
   };
+
+  const exitGame = () => {
+  clickSoundRef.current.play();
+
+  const finalScore = score; // 👉 snapshot 고정
+
+  setBestScore((prev) => {
+    const newBest = Math.max(prev, finalScore);
+    localStorage.setItem("mergeChase_bestScore", newBest.toString());
+    return newBest;
+  });
+
+  // 👉 게임 엔진 먼저 정리
+  if (aiGameInstance.current) {
+    aiGameInstance.current.engine.cleanupAI?.();
+  }
+
+  if (playerGameInstance.current) {
+    playerGameInstance.current.engine.cleanupListeners?.();
+  }
+
+  // 👉 상태 마지막
+  setGameState("MENU");
+};
 
   useEffect(() => {
     if (gameState === "GAMEOVER" && score > bestScore) {
