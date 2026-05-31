@@ -172,10 +172,27 @@ function createGame({
   onCombo,
   difficulty,
   onGameOver,
+  playMergeSound,
 }) {
   const { Engine, Render, Runner, World, Bodies, Body, Events } = Matter;
   const engine = Engine.create();
   engine.world.gravity.y = 1.15;
+
+  const MAX_BODIES = 60;
+
+  function limitBodies(world) {
+  const bodies = world.bodies.filter(
+    (b) => b.level && !b.isCurrent
+  );
+
+  if (bodies.length <= MAX_BODIES) return;
+
+  const removeCount = bodies.length - MAX_BODIES;
+
+  for (let i = 0; i < removeCount; i++) {
+    World.remove(world, bodies[i]);
+  }
+}
 
   const render = Render.create({
     element: scene,
@@ -189,6 +206,21 @@ function createGame({
   });
 
   let particles = [];
+
+  function updateParticles() {
+  particles = particles.filter(p => p.life > 0);
+
+  for (let p of particles) {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.02;
+  }
+}
+
+
+  Events.on(engine, "beforeUpdate", () => {
+  updateParticles();
+});
 
   function createParticles(x, y, color, count) {
     for (let i = 0; i < count; i++) {
@@ -205,7 +237,7 @@ function createGame({
   }
 
   function chooseSafeAiX() {
-    const bodies = Matter.Composite.allBodies(engine.world).filter(
+    const bodies = engine.world.bodies.filter(
       (body) => body.level && !body.isCurrent && !body.isStatic
     );
 
@@ -254,51 +286,30 @@ function createGame({
   }
 
   Events.on(render, "afterRender", () => {
-    const context = render.context;
-    const bodies = Matter.Composite.allBodies(engine.world);
+  const context = render.context;
+  const bodies = engine.world.bodies;
 
-    bodies.forEach((body) => {
-      if (body.level) {
-        const type = BALL_TYPES[body.level - 1];
-        const { x, y } = body.position;
-        const radius = body.circleRadius;
+  for (let i = 0; i < bodies.length; i++) {
+    const body = bodies[i];
+    if (!body.level) continue;
 
-        context.save();
+    const type = BALL_TYPES[body.level - 1];
+    const { x, y } = body.position;
+    const radius = body.circleRadius;
 
-        context.translate(x, y);
-        context.rotate(body.angle);
+    context.save();
+    context.translate(x, y);
+    context.rotate(body.angle);
 
-        context.shadowBlur = 0;
-        context.globalAlpha = 1;
+    context.font = `${Math.floor(radius * 1.6)}px Apple Color Emoji, sans-serif`;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
 
-        context.font = `${Math.floor(radius * 1.65)}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+    context.fillText(type.emoji, 0, 0);
 
-        context.textAlign = "center";
-        context.textBaseline = "middle";
-
-        context.fillText(type.emoji, 0, radius * 0.04);
-
-        context.restore();
-      }
-    });
-
-    particles = particles.filter((p) => p.life > 0);
-    particles.forEach((p) => {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.life -= 0.02;
-
-      context.save();
-      context.globalAlpha = p.life;
-      context.fillStyle = p.color;
-      context.shadowBlur = 5;
-      context.shadowColor = p.color;
-      context.beginPath();
-      context.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      context.fill();
-      context.restore();
-    });
-  });
+    context.restore();
+  }
+});
 
   Render.run(render);
   const runner = Runner.create();
@@ -345,6 +356,7 @@ function createGame({
 
     ball.level = level;
     ball.isCurrent = isCurrent;
+    ball.isMerged = false;
 
     if (isCurrent) Body.setStatic(ball, true);
 
@@ -353,6 +365,7 @@ function createGame({
 
   let currentBall = createBall(GAME_WIDTH / 2, 45, initialLevel, true);
   World.add(engine.world, currentBall);
+  limitBodies(engine.world);
 
   let canDrop = true;
   let comboCount = 0;
@@ -380,6 +393,7 @@ function createGame({
 
         currentBall = createBall(xPos, 45, levelToCreate, true);
         World.add(engine.world, currentBall);
+        limitBodies(engine.world);
         canDrop = true;
       }
     }, 100);
@@ -388,27 +402,34 @@ function createGame({
   let overTime = 0;
 
   const checkInterval = setInterval(() => {
-    const bodies = Matter.Composite.allBodies(engine.world);
-    let isTouching = false;
+  const bodies = engine.world.bodies;
 
-    for (let body of bodies) {
-      if (!body.isStatic && !body.isCurrent && body.position.y < DEADLINE) {
-        isTouching = true;
-        break;
-      }
-    }
+  let highestY = GAME_HEIGHT; // 아래가 기준 (최대값)
 
-    if (isTouching) {
-      overTime += 500;
+  for (let body of bodies) {
+    // 🔥 조건 핵심
+    if (!body.level) continue;        // 공만
+    if (body.isCurrent) continue;     // 떨어지는 공 제외
+    if (body.isStatic) continue;      // 고정된 바디 제외 (벽 등)
 
-      if (overTime > 2000) {
-        onGameOver("LINE_OVER");
-        clearInterval(checkInterval);
-      }
-    } else {
-      overTime = 0;
-    }
-  }, 500);
+    // 위로 올라간 정도 체크 (작을수록 위)
+    const top = body.position.y - (body.circleRadius || 0);
+
+    highestY = Math.min(highestY, top);
+  }
+
+  // 🔥 "전체 구조가 올라갔는지" 체크
+  if (highestY < DEADLINE) {
+    overTime += 500;
+  } else {
+    overTime = 0;
+  }
+
+  if (overTime > 2000) {
+    onGameOver("LINE_OVER");
+    clearInterval(checkInterval);
+  }
+}, 1000);
 
   if (!isAI) {
     const guideLineX = { current: GAME_WIDTH / 2 };
@@ -478,52 +499,75 @@ function createGame({
     };
   }
 
-  Events.on(engine, "collisionStart", (event) => {
-    event.pairs.forEach((pair) => {
-      const { bodyA, bodyB } = pair;
+Events.on(engine, "collisionStart", (event) => {
+  event.pairs.forEach((pair) => {
+    const { bodyA, bodyB } = pair;
 
-      if (bodyA.level && bodyB.level && bodyA.level === bodyB.level) {
-        if (bodyA.isCurrent || bodyB.isCurrent) return;
+    if (bodyA.mergeLock || bodyB.mergeLock) return;
+    if (!bodyA.level || !bodyB.level) return;
+    if (bodyA.level !== bodyB.level) return;
 
-        if (!isAI) {
-          comboCount++;
-          onCombo(comboCount);
-        }
+    if (bodyA.isCurrent || bodyB.isCurrent) return;
 
-        createParticles(
-          (bodyA.position.x + bodyB.position.x) / 2,
-          (bodyA.position.y + bodyB.position.y) / 2,
-          BALL_TYPES[bodyA.level - 1].color,
-          isAI ? 8 : 15 + comboCount * 2
-        );
 
-        if (bodyA.level === BALL_TYPES.length) {
-          World.remove(engine.world, [bodyA, bodyB]);
-          onScore(BALL_TYPES[BALL_TYPES.length - 1].score);
-          return;
-        }
+    if (!isAI) {
+      comboCount++;
+      onCombo(comboCount);
+    }
 
-        const nextLevel = bodyA.level + 1;
+    const x = (bodyA.position.x + bodyB.position.x) / 2;
+    const y = (bodyA.position.y + bodyB.position.y) / 2;
 
-        const newBall = createBall(
-          (bodyA.position.x + bodyB.position.x) / 2,
-          (bodyA.position.y + bodyB.position.y) / 2,
-          nextLevel
-        );
+    createParticles(
+      x,
+      y,
+      BALL_TYPES[bodyA.level - 1].color,
+      isAI ? 8 : 15 + comboCount * 2
+    );
 
-        World.remove(engine.world, [bodyA, bodyB]);
-        World.add(engine.world, newBall);
 
-        onScore(BALL_TYPES[nextLevel - 1].score);
-      }
-    });
+    bodyA.mergeLock = true;
+bodyB.mergeLock = true;
+
+setTimeout(() => {
+  bodyA.mergeLock = false;
+  bodyB.mergeLock = false;
+}, 0);
+    const nextLevel = bodyA.level + 1;
+
+    playMergeSound?.();
+
+    if (nextLevel > BALL_TYPES.length) {
+      World.remove(engine.world, [bodyA, bodyB]);
+      onScore(BALL_TYPES[BALL_TYPES.length - 1].score);
+      return;
+    }
+
+    const newBall = createBall(x, y, nextLevel);
+
+    World.remove(engine.world, [bodyA, bodyB]);
+    World.add(engine.world, newBall);
+    limitBodies(engine.world);
+
+    onScore(BALL_TYPES[nextLevel - 1].score);
   });
+});
 
   return { engine, render, runner };
 }
 
 function GameCanvas() {
-  const clickSoundRef = useRef(new Audio("/click.mp3"));
+  const playClick = () => {
+  const audio = new Audio("/click.mp3");
+  audio.volume = 0.6;
+  audio.currentTime = 0;
+
+  audio.play().catch(() => {});
+};
+
+  const bgmRef = useRef(new Audio("/bgm.mp3"));
+  const mergePoolRef = useRef([]);
+  const comboPoolRef = useRef([]);
 
   const gameButtonStyle = (active = false) => ({
   padding: "14px 36px",
@@ -571,6 +615,65 @@ const buttonHover = {
   const [isAiPaused, setIsAiPaused] = useState(false);
   const [shake, setShake] = useState(false);
 
+  useEffect(() => {
+  const bgm = bgmRef.current;
+
+  bgm.loop = true;
+  bgm.volume = 0.4;
+
+  const startBgm = async () => {
+    try {
+      await bgm.play();
+    } catch (err) {
+      // autoplay 막힌 경우 대비
+      const resume = async () => {
+        try {
+          await bgm.play();
+          window.removeEventListener("click", resume);
+          window.removeEventListener("keydown", resume);
+        } catch {}
+      };
+
+      window.addEventListener("click", resume);
+      window.addEventListener("keydown", resume);
+    }
+  };
+
+  startBgm();
+
+  return () => {
+    bgm.pause();
+    bgm.currentTime = 0;
+  };
+}, []);
+
+useEffect(() => {
+  const poolSize = 8;
+
+  mergePoolRef.current = Array.from({ length: poolSize }).map(() => {
+    const audio = new Audio("/merge-pop.mp3");
+    audio.volume = 0.6;
+
+    return {
+      audio,
+      busy: false,
+    };
+  });
+}, []);
+
+useEffect(() => {
+  const poolSize = 5;
+
+  comboPoolRef.current = Array.from({ length: poolSize }).map(() => {
+    const audio = new Audio("/combo.mp3");
+    audio.volume = 0.7;
+
+    return {
+      audio,
+      busy: false,
+    };
+  });
+}, []);
 
   function getGaugeColor(gap) {
   const ratio = Math.min(Math.abs(gap) / SAFE_GAP, 1);
@@ -638,29 +741,53 @@ const buttonHover = {
 }, [gameState]);
 
   const handleCombo = (count) => {
-    if (count < 2) return;
+  if (count < 2) return;
 
-    setComboText(`COMBO X${count}!`);
-    setComboKey((prev) => prev + 1);
-    setShake(true);
+  const pool = comboPoolRef.current;
+  const item = pool.find((p) => !p.busy);
 
-    setTimeout(() => setShake(false), 200);
+  if (item) {
+    item.busy = true;
 
-    let pauseTime = count === 2 ? 2000 : count === 3 ? 3500 : 5000;
+    const audio = item.audio;
 
-    setIsAiPaused(true);
+    const rate = Math.min(2.2, 1 + (count - 2) * 0.15);
 
-    if (aiGameInstance.current) aiGameInstance.current.engine.pauseAI(pauseTime);
+    audio.currentTime = 0;
+    audio.playbackRate = rate;
+    audio.volume = 0.7;
 
-    if (stunTimeoutRef.current) clearTimeout(stunTimeoutRef.current);
+    audio.play().catch(() => {
+      item.busy = false;
+    });
 
-    stunTimeoutRef.current = setTimeout(() => {
-      setIsAiPaused(false);
-      stunTimeoutRef.current = null;
-    }, pauseTime);
+    audio.onended = () => {
+      item.busy = false;
+    };
+  }
 
-    setTimeout(() => setComboText(""), 1200);
-  };
+  setComboText(`COMBO X${count}!`);
+  setComboKey((prev) => prev + 1);
+  setShake(true);
+
+  setTimeout(() => setShake(false), 200);
+
+  let pauseTime = count === 2 ? 2000 : count === 3 ? 3500 : 5000;
+
+  setIsAiPaused(true);
+
+  if (aiGameInstance.current)
+    aiGameInstance.current.engine.pauseAI(pauseTime);
+
+  if (stunTimeoutRef.current) clearTimeout(stunTimeoutRef.current);
+
+  stunTimeoutRef.current = setTimeout(() => {
+    setIsAiPaused(false);
+    stunTimeoutRef.current = null;
+  }, pauseTime);
+
+  setTimeout(() => setComboText(""), 1200);
+};
 
   const startGame = () => {
     setScore(0);
@@ -678,7 +805,7 @@ const buttonHover = {
   };
 
   const exitGame = () => {
-  clickSoundRef.current.play();
+    playClick();
 
   const finalScore = score; // 👉 snapshot 고정
 
@@ -728,6 +855,8 @@ const buttonHover = {
         onScore: (s) => setScore((p) => p + s),
         onCombo: handleCombo,
         onGameOver: () => endGame("PLAYER_LINE"),
+
+        playMergeSound,
       });
 
       return () => {
@@ -736,6 +865,27 @@ const buttonHover = {
       };
     }
   }, [gameState]);
+
+  const playMergeSound = () => {
+  const pool = mergePoolRef.current;
+
+  const item = pool.find((p) => !p.busy);
+
+  if (!item) return; // 전부 사용 중이면 스킵
+
+  item.busy = true;
+
+  const audio = item.audio;
+  audio.currentTime = 0;
+
+  audio.play().catch(() => {
+    item.busy = false;
+  });
+
+  audio.onended = () => {
+    item.busy = false;
+  };
+};
 
   return (
     <div
@@ -899,7 +1049,7 @@ const buttonHover = {
   <button
     key={lvl}
     onClick={() => {
-    clickSoundRef.current.play();
+    playClick();
     setDifficulty(lvl);
   }}
     style={gameButtonStyle(difficulty === lvl)}
@@ -913,7 +1063,7 @@ const buttonHover = {
 
           <button
   onClick={() => {
-    clickSoundRef.current.play();
+    playClick();
     startGame();
   }}
   style={{
@@ -1286,7 +1436,7 @@ const buttonHover = {
               <div style={{ marginTop: "20px", textAlign: "right", padding: "6px" }}>
                 <button
   onClick={() => {
-    clickSoundRef.current.play();
+    playClick();
 
     setBestScore((prev) => {
       const newBest = Math.max(prev, score);
