@@ -736,7 +736,7 @@ useEffect(() => {
   }
 
   // ✅ 추가: 플레이어가 AI보다 20000점 앞서면 즉시 승리
-  if (score >= aiScore + 20000) {
+  if (score >= aiScore + 15000) {
     endGame("PLAYER_WIN");
     return;
   }
