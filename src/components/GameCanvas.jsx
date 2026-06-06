@@ -727,20 +727,10 @@ useEffect(() => {
 }, []);
 
   useEffect(() => {
-  if (gameState !== "PLAYING") return;
-
-  // AI 승리 조건 (기존 유지)
-  if (score >= 1000 && aiScore >= score) {
-    endGame("AI_WIN");
-    return;
-  }
-
-  // ✅ 추가: 플레이어가 AI보다 20000점 앞서면 즉시 승리
-  if (score >= aiScore + 15000) {
-    endGame("PLAYER_WIN");
-    return;
-  }
-}, [aiScore, score, gameState]);
+    if (gameState === "PLAYING" && score >= 1000 && aiScore >= score) {
+      endGame("AI_WIN");
+    }
+  }, [aiScore, score, gameState]);
 
 
   useEffect(() => {
@@ -1043,12 +1033,10 @@ useEffect(() => {
             <div style={{ marginBottom: "30px" }}>
               <p style={{ fontSize: "24px", color: "#d50000", fontWeight: "900" }}>
                 {gameOverReason === "AI_WIN"
-  ? "AI 점수 추월 패배!"
-  : gameOverReason === "PLAYER_WIN"
-  ? "AI보다 2만점 먼저 달성 승리!"
-  : gameOverReason === "PLAYER_LINE"
-  ? "영역 초과 패배!"
-  : "AI 자멸 승리!"}
+                  ? "AI 점수 추월 패배!"
+                  : gameOverReason === "PLAYER_LINE"
+                  ? "영역 초과 패배!"
+                  : "AI 자멸 승리!"}
               </p>
               <p style={{ fontSize: "32px", color: "#1b1b1b", marginTop: "10px", fontWeight: "900" }}>
                 SCORE: {score.toLocaleString()}
@@ -1487,3 +1475,4 @@ useEffect(() => {
 }
 
 export default GameCanvas;
+
